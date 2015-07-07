@@ -1,0 +1,305 @@
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Federated Wiki</title>
+
+  <link rel="stylesheet" type="text/css" media="screen" href="http://nicole.wikity.net/elements/items.css" />
+  <link rel="stylesheet" type="text/css" media="screen" href="http://nicole.wikity.net/elements/page.css" />
+
+  <!-- this next bit should be moved to an external js, but we're making it brain dead simple here. I used to call it config.js -->
+
+  <script>
+     var page = 'haiku-by-a-robot';
+     var site = 'journal.hapgood.net';
+     rootsite = 'wikitytest.hapgood.net';
+  </script>
+
+  <!-- Libraries: jQuery, Defiant for XPath, marked for markdown, sugar for basic string/array/url/date funcs -->
+
+  <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+  <script src="http://wikity.net/defiant-latest.min.js"></script>
+  <script src="http://mike.wikity.net/marked.js"></script>
+  <script src="http://sugarjs.com/release/current/sugar.min.js"></script>
+
+  <!-- likewise with this js, you should move it somewhere -->
+
+  <script>
+  function redlinks(sitemap, sitemapsite) {
+    console.log(sitemapsite);
+    var found = 0;
+    $('a.redlink').each(function(index, l) {
+      found = JSON.search(sitemap, '//*[title="' + $(this).html() + '"]');
+      console.log($(this).html());
+      if (found.length > 0) {
+        $(this)[0].title = found[0].synopsis;
+        $(this)[0].href = $(this)[0].href.replace($(this).html(), found[0].slug);
+        $(this).removeClass('redlink');
+        if (sitemapsite != site) {
+          $(this)[0].href = $(this)[0].href.replace("site)", "'" + sitemapsite + "')");
+          $(this)[0].title = 'FROM ' + sitemapsite + ': ' + found[0].synopsis;
+        }
+
+      }
+    });
+  }
+
+  function makeItems(nodename, target) {
+    var str;
+    items = JSON.search(pages[page][toslug(site)], '/d:data' + nodename);
+
+    // title is special case
+    if (nodename == "/title") {
+      $(target).html(items[0]);
+      $(target).append(' <a target="fedwiki" class="smalleditlink" href="http://' + rootsite + '/wikity.hapgood.net/how-to-share/' + site + '/'+ page + '">share</a>');
+      $(target).append('<span class="smalleditlink"> / </span><a target="fedwiki" class="smalleditlink" href="http://' + rootsite + '/wikity.hapgood.net/how-to-edit/' + site + '/'+ page + '">edit</a>');
+      return;
+    }
+
+    for (idx in items) {
+      switch (items[idx].type) {
+
+        case "paragraph":
+          str = '<div id="{id}" class="id_{id} type_{type}">{text}</div>';
+
+          $(target).append(str.assign({
+            id: items[idx].id,
+            type: items[idx].type,
+            text: formatlinks(items[idx].text)
+          }));
+          break;
+
+        case "markdown":
+          str = '<div id="{id}" class="id_{id} type_{type}">{text}</div>';
+
+          $(target).append(str.assign({
+            id: items[idx].id,
+            type: items[idx].type,
+            text: marked(formatlinks(items[idx].text))
+          }));
+          break;
+
+        case "code":
+          str = '<div id="{id}" style="font-family:monospace" class="id_{id} type_{type}">{text}</div>';
+
+          $(target).append(str.assign({
+            id: items[idx].id,
+            type: items[idx].type,
+            text: items[idx].text.lines().join('<br>').replace('  ','&nbsp;&nbsp;')
+          }));
+          break;
+
+        case "image":
+          str = '<figure id="{id}" class="id_{id} type_{type}">' +
+            '<img src="{url}" class="type_{type} id_{id}" />' +
+            '<figcaption>{text}</figcaption>' +
+            '</figure>';
+
+          $(target).append(str.assign({
+            id: items[idx].id,
+            type: items[idx].type,
+            text: marked(formatlinks(items[idx].text)),
+            url: items[idx].url
+          }));
+          break;
+          
+        case "audio":
+           str = '<audio id="{id}" class="id_{id} type_{type}" src="{text}" preload="none" controls="" '+ 
+           'style="width: 100%;"><a href="{text}">download audio</a>' +
+           '</audio>';
+           
+            $(target).append(str.assign({
+            id: items[idx].id,
+            type: items[idx].type,
+            text: items[idx].text
+          }));
+          break;
+           
+
+        case "video":
+          str = '<table id="{id}" class="id_{id} type_{type}"><tr><td>' +
+            '<iframe width="560" height="315" src="https://www.youtube.com/embed/{vidId}" frameborder="0" allowfullscreen></iframe></td></tr>'
+          '<tr><td>{text}</td></tr>' +
+          '</table>';
+
+          $(target).append(str.assign({
+            id: items[idx].id,
+            type: items[idx].type,
+            text: marked(formatlinks(items[idx].text.split('\n')[1])),
+            url: items[idx].url,
+            vidId: items[idx].text.split('\n')[0].split(' ')[1]
+          }));
+          break;
+
+      }
+    }
+  }
+
+  function formatlinks(t) {
+    pre_link = "<a class= \"wikilink redlink\" href=\"javascript:wikilink('";
+    post_link = "',site);\">";
+    t = t.replace(/\[\[([^\]]+)\]\]/gi, pre_link + "$1" + post_link + "$1" + '</a>');
+    t = t.replace(/\[((http|https|ftp):.*?) (.*?)\]/gi, '<a href="$1">$3</a> <img src="http://' + site + '/images/external-link-ltr-icon.png">');
+    return t;
+  }
+
+  function toslug(s) {
+    slug = s.toLowerCase();
+    slug = slug.replace(/[\. ]/g, '-');
+    slug = slug.replace(/[^a-zA-Z0-9 \.\-]+/g, "");
+    return slug;
+  }
+
+  function wikilink(l, s) {
+    window.location.href = window.location.pathname + '?p=' + toslug(l) + '&s=' + s;
+  }
+
+  function addpage(jpage, jsite, data) {
+    if (typeof pages[jpage] === 'undefined') {
+      pages[jpage] = [];
+    }
+    if (typeof pages[jpage][jsite] === 'undefined') {
+      pages[jpage][jsite] = [];
+    }
+    pages[jpage][jsite] = data;
+  }
+
+  function getsitemap() {
+    // gets only this sites sitemap; getforksites() and getrostersites() handle others
+    $.getJSON('http://' + site + '/system/sitemap.json', function(data) {
+      data = Defiant.getSnapshot(data)
+      addpage('sitemap', toslug(site), data);
+      sitepages('#selectedpages', 'date > ' + Date.create('a week ago').getTime(),'Updated in past week');
+      redlinks(data, site);
+    });
+  }
+
+  function getforksitemaps() {
+    var found = JSON.search(pages[page][toslug(site)], '//site');
+    for (s in found) {
+      $.getJSON('http://' + found[s] + '/system/sitemap.json', function(data) {
+        data = Defiant.getSnapshot(data)
+        redlinks(data, found[s]);
+        addpage('sitemap', toslug(found[s]), data);
+      });
+    }
+
+  }
+
+  function doattribution() {
+    var site_arr = [],
+      forks = JSON.search(pages[page][toslug(site)], '//site');
+      var s;
+    $("#via").text(site);
+    if (site != rootsite) {
+      $("#via").css("color", "red");
+    }
+    if (forks.length) {
+      $("#op").html('<a href="javascript:wikilink(\''+ page + '\',\'' + forks[0] + '\')">' + forks[0] + '</a>');
+    } else {
+      $("#op").html('<a href="javascript:wikilink(\''+ page + '\',\'' + site + '\')">' + site + '</a>');
+    }
+    forks.push(site);
+    $('#editedby').html('');
+    for (s in forks.unique()){
+      $("#editedby").append('<a href="javascript:wikilink(\''+ page + '\',\'' + forks.unique()[s] + '\')">' + forks.unique()[s] + '</a><br/>');
+    }
+  }
+
+  function sitepages(target, filter, filterdesc) {
+    var sitepages = JSON.search(pages['sitemap'][toslug(site)], '/d:data/*[' + filter + ']');
+    console.log('/d:data/*[' + filter + ']');
+    var str = '';
+    sitepages = sitepages.sortBy(function(n) {
+      return n.date;
+    }, desc = true);
+    for (p in sitepages) {
+      str = str + formatlinks('[[' + sitepages[p].title + ']]')+'<br/>';
+    }
+    $(target).html(str);
+    $('#selectedfilter').html('Filter: ' + filterdesc);
+    var dy = "javascript:sitepages('#selectedpages', 'date > ' + Date.create('a day ago').getTime(),'Updated in past day')";
+    var wk = "javascript:sitepages('#selectedpages', 'date > ' + Date.create('a week ago').getTime(),'Updated in past week')";
+    var yr = "javascript:sitepages('#selectedpages', 'date > ' + Date.create('a year ago').getTime(),'Updated in past year')";
+
+    str = 'Last <a href="{dy}">day</a>, <a href="{wk}">week</a>, <a href="{yr}">year</a>';
+    $('#selectedfilteropt').html(str.assign({
+      dy: dy,
+      wk: wk,
+      yr: yr
+    }));
+  }
+  </script>
+</head>
+<body>
+  <!-- Output element -->
+  <div id="container">
+      <div id="header">
+          <div class="inner">
+          <div id="sitename">
+
+          </div>
+          &nbsp;
+          <div id="sitemenu">
+              &nbsp;&nbsp;
+          </div>
+          </div><!-- /.inner -->
+      </div><!-- /#navigation -->
+      <div id="content">
+          <div id="contentinner" class="inner">
+              <div id="document">
+                  <h1 class="maintitle" id="maintitle"></h1>
+                  <div class="mainstory" id="mainstory">
+
+                  </div>
+                  <div id="footer"></div>
+              </div><!-- /#document -->
+              <div id="navigation">
+                <div id="attribution">
+
+                  <div id="viahdr">Via:</div>
+                  <div id="via"></div>
+                  <div id="ophdr">Originally posted by:</div>
+                  <div id="op"></div>
+                  <div id="editedbyhdr">Edited/shared by:</div>
+                  <div id="editedby"></div>
+                </div>
+                  <div id="sideimage"></div>
+                  <div id="selectedpageshdr">Recently Edited On This Site</div>
+                  <div id="selectedpages"></div>
+                  <div id="selectedfilter"></div>
+                  <div id="selectedfilteropt"></div>
+                  <div id="index"></div>
+              </div><!-- /#navigation -->
+
+          </div><!-- /.inner -->
+      </div><!-- /#content -->
+  </div><!-- /#container -->
+  <script type="text/javascript">
+    var qp = Object.fromQueryString(window.location.search);
+    if (qp.keys().length) {
+      page = qp.p;
+      site = qp.s;
+    }
+
+    var pages = [];
+
+    // Render inital page
+
+    $.getJSON('http://' + site + '/' + page + '.json', function(data) {
+      data = Defiant.getSnapshot(data);
+      addpage(page, toslug(site), data);
+      makeItems('/title', '#maintitle');
+      makeItems('/story', '#mainstory');
+
+      $(".item_story, figcaption").each(function(index) {
+        $(this).html(formatlinks($(this).html(), site));
+      });
+
+      getsitemap();
+      getforksitemaps();
+      doattribution();
+
+    });
+  </script>
+</body>
+</html>
